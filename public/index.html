@@ -22,6 +22,8 @@
         <select id="receptionSelect">
           <option value="A">受付A</option>
           <option value="B">受付B</option>
+          <option value="C">受付C</option>
+          <option value="D">受付D</option>
           <option value="HQ">本部</option>
         </select>
       </div>
@@ -41,18 +43,18 @@
         <span>人</span>
       </article>
 
-      <section id="hqTotals" class="hq-totals hidden">
-        <article>
-          <span>受付A</span>
-          <strong id="aTotal">0</strong>
-          <small>人</small>
-        </article>
-        <article>
-          <span>受付B</span>
-          <strong id="bTotal">0</strong>
-          <small>人</small>
-        </article>
+      <section id="hqIncludeBox" class="hq-include-box">
+        <label class="hq-check-label">
+          <input type="checkbox" id="includeInHQ" checked>本部集計に含める
+        </label>
+
+        <p id="hqIncludeWarning" class="hq-warning hidden">
+          ※ この受付の人数は本部の合計には含まれません。
+        </p>
       </section>
+
+      <section id="hqTotals" class="hq-totals hidden"></section>
+      <div id="hqWarning" class="hq-warning hidden"></div>
 
       <section id="categoryGrid" class="category-grid"></section>
     </section>

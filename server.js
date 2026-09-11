@@ -32,13 +32,13 @@ const CATEGORIES = [
   "その他"
 ];
 
-const RECEPTIONS = ["A", "B"];
+const RECEPTIONS = ["A", "B", "C", "D"];
 
 async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS entrance_counts (
       visit_date DATE NOT NULL,
-      reception TEXT NOT NULL CHECK (reception IN ('A', 'B')),
+      reception TEXT NOT NULL,
       category TEXT NOT NULL,
       count INTEGER NOT NULL DEFAULT 0 CHECK (count >= 0),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -47,8 +47,31 @@ async function initDb() {
   `);
 
   await pool.query(`
+    ALTER TABLE entrance_counts
+    DROP CONSTRAINT IF EXISTS entrance_reception_check;
+  `);
+
+  await pool.query(`
+    ALTER TABLE entrance_counts
+    ADD CONSTRAINT entrance_reception_check
+    CHECK (reception IN ('A', 'B', 'C', 'D'));
+  `);
+
+  await pool.query(`
     CREATE INDEX IF NOT EXISTS idx_entrance_counts_date
     ON entrance_counts (visit_date DESC);
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS entrance_reception_settings (
+      visit_date DATE NOT NULL,
+      reception TEXT NOT NULL CHECK (
+        reception IN ('A', 'B', 'C', 'D')
+      ),
+      include_in_hq BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (visit_date, reception)
+    );
   `);
 
   console.log("Database ready.");
@@ -69,33 +92,84 @@ function combinedCounts(a, b) {
 }
 
 async function getDay(date) {
+  // 人数取得
   const result = await pool.query(
     `SELECT reception, category, count
-     FROM entrance_counts
-     WHERE visit_date = $1`,
+    FROM entrance_counts
+    WHERE visit_date = $1`,
     [date]
   );
 
-  const A = blankCounts();
-  const B = blankCounts();
+  // 本部集計設定取得
+  const settingsResult = await pool.query(
+    `SELECT reception, include_in_hq
+    FROM entrance_reception_settings
+    WHERE visit_date = $1`,
+    [date]
+  );
 
+  // A～Dの人数データ
+  const receptions = {};
+
+  for (const reception of RECEPTIONS) {
+    receptions[reception] = {
+      counts: blankCounts(),
+      total: 0,
+      includeInHQ: true
+    };
+  }
+
+  // 人数を格納
   for (const row of result.rows) {
     if (!RECEPTIONS.includes(row.reception)) continue;
     if (!CATEGORIES.includes(row.category)) continue;
-    if (row.reception === "A") A[row.category] = Number(row.count);
-    if (row.reception === "B") B[row.category] = Number(row.count);
+
+    receptions[row.reception].counts[row.category] =
+      Number(row.count);
+  }
+
+  // 本部集計設定を格納
+  for (const row of settingsResult.rows) {
+    if (!RECEPTIONS.includes(row.reception)) continue;
+
+    receptions[row.reception].includeInHQ =
+      row.include_in_hq;
+  }
+
+  // 各受付の合計
+  for (const reception of RECEPTIONS) {
+    receptions[reception].total =
+      totalOf(receptions[reception].counts);
+  }
+
+  // 本部集計
+  const hqCombined = blankCounts();
+  let hqTotal = 0;
+
+  for (const reception of RECEPTIONS) {
+    const data = receptions[reception];
+
+    if (!data.includeInHQ) {
+      continue;
+    }
+
+    hqTotal += data.total;
+
+    for (const category of CATEGORIES) {
+      hqCombined[category] +=
+        Number(data.counts[category] || 0);
+    }
   }
 
   return {
     date,
-    A,
-    B,
-    totals: {
-      A: totalOf(A),
-      B: totalOf(B),
-      all: totalOf(A) + totalOf(B)
-    },
-    combined: combinedCounts(A, B)
+
+    receptions,
+
+    hq: {
+      total: hqTotal,
+      combined: hqCombined
+    }
   };
 }
 
@@ -104,40 +178,79 @@ async function changeCount(date, reception, category, amount) {
     await pool.query(
       `INSERT INTO entrance_counts
         (visit_date, reception, category, count, updated_at)
-       VALUES ($1, $2, $3, 1, NOW())
-       ON CONFLICT (visit_date, reception, category)
-       DO UPDATE SET
-         count = entrance_counts.count + 1,
-         updated_at = NOW()`,
+        VALUES ($1, $2, $3, 1, NOW())
+        ON CONFLICT (visit_date, reception, category)
+        DO UPDATE SET
+          count = entrance_counts.count + 1,
+          updated_at = NOW()`,
       [date, reception, category]
     );
   } else {
     await pool.query(
       `INSERT INTO entrance_counts
         (visit_date, reception, category, count, updated_at)
-       VALUES ($1, $2, $3, 0, NOW())
-       ON CONFLICT (visit_date, reception, category)
-       DO UPDATE SET
-         count = GREATEST(entrance_counts.count - 1, 0),
-         updated_at = NOW()`,
+        VALUES ($1, $2, $3, 0, NOW())
+        ON CONFLICT (visit_date, reception, category)
+        DO UPDATE SET
+          count = GREATEST(entrance_counts.count - 1, 0),
+          updated_at = NOW()`,
       [date, reception, category]
     );
   }
 }
 
+async function changeReceptionSetting(date, reception, includeInHQ) {
+  await pool.query(
+    `INSERT INTO entrance_reception_settings
+      (visit_date, reception, include_in_hq, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (visit_date, reception)
+      DO UPDATE SET
+        include_in_hq = EXCLUDED.include_in_hq,
+        updated_at = NOW()`,
+    [date, reception, includeInHQ]
+  );
+}
+
 async function getHistory() {
   const result = await pool.query(`
-    SELECT
-      visit_date::text AS date,
-      COALESCE(SUM(count) FILTER (WHERE reception = 'A'), 0)::int AS "A",
-      COALESCE(SUM(count) FILTER (WHERE reception = 'B'), 0)::int AS "B",
-      COALESCE(SUM(count), 0)::int AS "all"
+    SELECT DISTINCT visit_date::text AS date
     FROM entrance_counts
-    GROUP BY visit_date
-    ORDER BY visit_date DESC
+    ORDER BY date DESC
   `);
 
-  return result.rows;
+  const history = [];
+
+  for (const row of result.rows) {
+    const day = await getDay(row.date);
+
+    history.push({
+      date: row.date,
+
+      receptions: {
+        A: {
+          total: day.receptions.A.total,
+          includeInHQ: day.receptions.A.includeInHQ
+        },
+        B: {
+          total: day.receptions.B.total,
+          includeInHQ: day.receptions.B.includeInHQ
+        },
+        C: {
+          total: day.receptions.C.total,
+          includeInHQ: day.receptions.C.includeInHQ
+        },
+        D: {
+          total: day.receptions.D.total,
+          includeInHQ: day.receptions.D.includeInHQ
+        }
+      },
+
+      hqTotal: day.hq.total
+    });
+  }
+
+  return history;
 }
 
 function sendJson(res, status, body) {
@@ -243,6 +356,45 @@ const server = http.createServer(async (req, res) => {
 
       await changeCount(date, reception, category, amount);
       return sendJson(res, 200, await getDay(date));
+    }
+
+    if (req.method === "POST" && pathname === "/api/reception-setting") {
+      const body = await readJson(req);
+      const {
+        date,
+        reception,
+        includeInHQ
+      } = body;
+
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date || "")) {
+        return sendJson(res, 400, {
+          error: "Invalid date"
+        });
+      }
+
+      if (!RECEPTIONS.includes(reception)) {
+        return sendJson(res, 400, {
+          error: "Invalid reception"
+        });
+      }
+
+      if (typeof includeInHQ !== "boolean") {
+        return sendJson(res, 400, {
+          error: "Invalid includeInHQ"
+        });
+      }
+
+      await changeReceptionSetting(
+        date,
+        reception,
+        includeInHQ
+      );
+
+      return sendJson(
+        res,
+        200,
+        await getDay(date)
+      );
     }
 
     serveStatic(res, pathname);

@@ -170,6 +170,42 @@ header .sub-button { background: white; }
 .history-head h2 { margin: 0; }
 .history-head p { margin: 4px 0 0; color: #667085; }
 
+.hq-include-box {
+  margin: 16px 0;
+  padding: 16px;
+  background: #fff;
+  border-radius: 12px;
+}
+
+.hq-check-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: bold;
+}
+
+.hq-check-label input {
+  width: 22px;
+  height: 22px;
+}
+
+.hq-warning {
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff3cd;
+  font-weight: bold;
+}
+
+.excluded-reception {
+  opacity: 0.55;
+}
+
+.history-receptions {
+  margin-top: 10px;
+  line-height: 1.8;
+}
+
 #historyList {
   display: grid;
   gap: 10px;

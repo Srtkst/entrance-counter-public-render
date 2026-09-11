@@ -11,12 +11,24 @@ const CATEGORIES = [
   "その他"
 ];
 
+const RECEPTIONS = [
+  "A",
+  "B",
+  "C",
+  "D"
+];
+
 const receptionSelect = document.getElementById("receptionSelect");
 const dateInput = document.getElementById("dateInput");
 const totalTitle = document.getElementById("totalTitle");
 const totalCount = document.getElementById("totalCount");
-const aTotal = document.getElementById("aTotal");
-const bTotal = document.getElementById("bTotal");
+//const aTotal = document.getElementById("aTotal");
+//const bTotal = document.getElementById("bTotal");
+const hqIncludeBox = document.getElementById("hqIncludeBox");
+const includeInHQ = document.getElementById("includeInHQ");
+const hqIncludeWarning = document.getElementById("hqIncludeWarning");
+const hqWarning = document.getElementById("hqWarning");
+
 const hqTotals = document.getElementById("hqTotals");
 const categoryGrid = document.getElementById("categoryGrid");
 const statusText = document.getElementById("statusText");
@@ -37,13 +49,15 @@ const TODAY = localDateString();
 dateInput.value = TODAY;
 
 const savedReception = localStorage.getItem("reception");
-if (["A", "B", "HQ"].includes(savedReception)) {
+if (["A", "B", "C", "D", "HQ"].includes(savedReception)) {
   receptionSelect.value = savedReception;
 }
 
 function receptionLabel(value) {
   if (value === "A") return "受付A";
   if (value === "B") return "受付B";
+  if (value === "C") return "受付C";
+  if (value === "D") return "受付D";
   return "本部";
 }
 
@@ -95,31 +109,94 @@ function renderCategoryCards(counts, editable) {
   }
 }
 
+function renderHQReceptionTotals(receptions) {
+  hqTotals.innerHTML = "";
+  const excluded = [];
+
+  for (const reception of RECEPTIONS) {
+    const data = receptions[reception];
+    const card = document.createElement("article");
+
+    card.innerHTML = `
+      <span>${receptionLabel(reception)}</span>
+      <strong>${data.total}</strong>
+      <small>人</small>
+      <div>${data.includeInHQ ? "集計対象" : "集計対象外"}</div>
+    `;
+
+    if (!data.includeInHQ) {
+
+      card.classList.add("excluded-reception");
+      excluded.push(receptionLabel(reception));
+    }
+
+    hqTotals.appendChild(card);
+  }
+
+  if (excluded.length > 0) {
+    hqWarning.textContent =
+      `※ ${excluded.join("・")} は本部合計に含まれていません。`;
+    hqWarning.classList.remove("hidden");
+  } else {
+    hqWarning.classList.add("hidden");
+  }
+}
+
 async function render() {
   try {
     const payload = await fetchDay();
     const reception = receptionSelect.value;
     const selectedDate = dateInput.value;
     const isToday = selectedDate === TODAY;
+    statusText.textContent =
+      `${selectedDate} / ${receptionLabel(reception)}`;
 
-    statusText.textContent = `${selectedDate} / ${receptionLabel(reception)}`;
+    // =========================
+    // 本部
+    // =========================
 
     if (reception === "HQ") {
-      totalTitle.textContent = "全体合計";
-      totalCount.textContent = payload.totals.all;
-      aTotal.textContent = payload.totals.A;
-      bTotal.textContent = payload.totals.B;
+      totalTitle.textContent = "本部集計 合計";
+      totalCount.textContent = payload.hq.total;
+      hqIncludeBox.classList.add("hidden");
       hqTotals.classList.remove("hidden");
-      renderCategoryCards(payload.combined, false);
-    } else {
-      totalTitle.textContent = `${receptionLabel(reception)} 合計`;
-      totalCount.textContent = payload.totals[reception];
-      hqTotals.classList.add("hidden");
-      renderCategoryCards(payload[reception], isToday);
+
+      renderHQReceptionTotals(payload.receptions);
+      renderCategoryCards(payload.hq.combined,false);
+
+      return;
     }
+
+    // =========================
+    // 受付A～D
+    // =========================
+
+    const data = payload.receptions[reception];
+    totalTitle.textContent = `${receptionLabel(reception)} 合計`;
+    totalCount.textContent = data.total;
+    
+    hqTotals.classList.add("hidden");
+    hqWarning.classList.add("hidden");
+    hqIncludeBox.classList.remove("hidden");
+
+    includeInHQ.checked = data.includeInHQ;
+    includeInHQ.disabled = !isToday;
+
+    if (data.includeInHQ) {
+      hqIncludeWarning.classList.add("hidden");
+    } else {
+      hqIncludeWarning.classList.remove("hidden");
+    }
+
+    renderCategoryCards(
+      data.counts,
+      isToday
+    );
   } catch (error) {
     console.error(error);
-    showToast("データを取得できませんでした");
+    showToast(
+      "データを取得できませんでした"
+    );
   }
 }
 
@@ -153,6 +230,48 @@ async function changeCount(category, amount) {
   }
 }
 
+includeInHQ.addEventListener("change", async () => {
+  const reception = receptionSelect.value;
+
+  if (reception === "HQ") return;
+
+  if (dateInput.value !== TODAY) {
+    showToast("過去の日付は閲覧のみです");
+    await render();
+    return;
+  }
+
+  try{
+    const response = await fetch("/api/reception-setting",{
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        date: dateInput.value,
+        reception,
+        includeInHQ: includeInHQ.checked
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error("Failed to update setting");
+    }
+
+    if (includeInHQ.checked) {
+      showToast(`${receptionLabel(reception)} を本部集計に含めるように設定しました`);
+    } else {
+      showToast(`${receptionLabel(reception)} を本部集計に含めないように設定しました`);
+    }
+
+    await render();
+
+  } catch (error) {
+    console.error(error);
+    showToast("受付設定の更新に失敗しました");
+
+    await render(); 
+  }
+});
+
 async function openHistory() {
   mainView.classList.add("hidden");
   historyView.classList.remove("hidden");
@@ -173,13 +292,29 @@ async function openHistory() {
     for (const item of payload.history) {
       const card = document.createElement("article");
       card.className = "history-card";
+
+      let receptionText = "";
+
+      for (const reception of RECEPTIONS) {
+        const data = item.receptions[reception];
+        receptionText += `
+          <div>
+            ${receptionLabel(reception)}：
+            ${data.total}人  
+            ${data.includeInHQ ? "" : "(集計対象外)"}  
+          </div>`;
+      }
+
       card.innerHTML = `
         <div>
           <strong class="history-date">${item.date}</strong>
+          <div class="history-receptions">
+            ${receptionText}
+          </div>
           <p>
-            受付A：${item.A}人 /
-            受付B：${item.B}人 /
-            全体：${item.all}人
+            <strong>
+              本部合計：${item.hq.total}人
+            </strong>
           </p>
         </div>
         <button data-date="${item.date}">詳細</button>
