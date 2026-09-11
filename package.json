@@ -1,0 +1,15 @@
+{
+  "name": "entrance-counter-public-render",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Public entrance counter for Render + PostgreSQL",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>入場者カウント</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>入場者カウント</h1>
+      <p id="statusText">受付を選択してください</p>
+    </div>
+    <button id="historyOpenButton" class="sub-button">過去の記録</button>
+  </header>
+
+  <main>
+    <section class="controls">
+      <div>
+        <label for="receptionSelect">画面</label>
+        <select id="receptionSelect">
+          <option value="A">受付A</option>
+          <option value="B">受付B</option>
+          <option value="HQ">本部</option>
+        </select>
+      </div>
+
+      <div>
+        <label for="dateInput">日付</label>
+        <input type="date" id="dateInput">
+      </div>
+
+      <button id="todayButton" class="sub-button">今日</button>
+    </section>
+
+    <section id="mainView">
+      <article class="total-card">
+        <div id="totalTitle">受付A 合計</div>
+        <strong id="totalCount">0</strong>
+        <span>人</span>
+      </article>
+
+      <section id="hqTotals" class="hq-totals hidden">
+        <article>
+          <span>受付A</span>
+          <strong id="aTotal">0</strong>
+          <small>人</small>
+        </article>
+        <article>
+          <span>受付B</span>
+          <strong id="bTotal">0</strong>
+          <small>人</small>
+        </article>
+      </section>
+
+      <section id="categoryGrid" class="category-grid"></section>
+    </section>
+
+    <section id="historyView" class="hidden">
+      <div class="history-head">
+        <div>
+          <h2>過去の記録</h2>
+          <p>保存済みの日付一覧です。</p>
+        </div>
+        <button id="historyCloseButton" class="sub-button">戻る</button>
+      </div>
+
+      <div id="historyList"></div>
+    </section>
+  </main>
+
+  <div id="toast"></div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
