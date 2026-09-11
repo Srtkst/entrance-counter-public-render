@@ -46,14 +46,16 @@ async function initDb() {
     );
   `);
 
+  //古い制約の削除
   await pool.query(`
     ALTER TABLE entrance_counts
-    DROP CONSTRAINT IF EXISTS entrance_reception_check;
+    DROP CONSTRAINT IF EXISTS entrance_counts_reception_check;
   `);
 
+  //作り直し
   await pool.query(`
     ALTER TABLE entrance_counts
-    ADD CONSTRAINT entrance_reception_check
+    ADD CONSTRAINT entrance_counts_reception_check
     CHECK (reception IN ('A', 'B', 'C', 'D'));
   `);
 
