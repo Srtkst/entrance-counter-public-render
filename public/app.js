@@ -1,12 +1,14 @@
 const CATEGORIES = [
+  "未就学児",
   "小学生",
   "中学生",
   "高校生",
   "在校生1年",
   "在校生2年",
-  "在校生3年",
+  "在校生3,4年",
   "保護者",
-  "地域の人"
+  "地域の人",
+  "その他"
 ];
 
 const receptionSelect = document.getElementById("receptionSelect");
