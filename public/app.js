@@ -313,7 +313,7 @@ async function openHistory() {
           </div>
           <p>
             <strong>
-              本部合計：${item.hq.total}人
+              本部合計：${item.hqTotal}人
             </strong>
           </p>
         </div>
